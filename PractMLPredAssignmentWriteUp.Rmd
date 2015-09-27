@@ -1,0 +1,100 @@
+---
+title: "**PractML_PredictionModel_WriteUp**"
+author: "Naresh Raheja"
+date: "September 27, 2015"
+output: html_document
+---
+## Introduction - Problem statement and objective
+Using some fitness data device, a large amount of data is collected about personal activities. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, the input data came from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. **Training data and test data** for model building was provided, and it came from the this source: http://groupware.les.inf.puc-rio.br/har. The goal of the project is to predict the manner in which they did the exercise (This is the **"classe" variable** in the training set). 
+
+## Data Understanding and Preparation (Applying logical filters) before Prediction Modeling
+
+Firstly, I read the input data (training and testing data), and I also loaded the necessary packages (caret and randomForest). I divided the the available training data (traindata) into two chunks: actual training set (traindata1), and validation set (traindata2). I used 67:33 (or 2:1) ratio for this purpose. I then looked at the summary of the data fields in the input file, and I managed the number of features to be used for the analysis (by eliminating those variables that do not seem to have any logical association with the prediction variable have nearly zero variance, and variables that are mostly (>90%) NA). 
+
+```{r}
+#Defined my workign directory
+setwd("C:/Rworld/PMLA")
+#
+# Loaded the necessary packages
+library(caret)
+library(randomForest)
+#
+#Read the input training and testing data
+traindata <- read.csv("pml-training.csv")
+testdata <- read.csv("pml-testing.csv")
+#
+#Defined an initial "seed"
+set.seed(15)
+#
+# Divided the training data in two parts: Actual training data dn validation data
+ActualTrainSet <- createDataPartition(y=traindata$classe, p=0.67, list=F)
+traindata1 <- traindata[ActualTrainSet, ]
+traindata2 <- traindata[-ActualTrainSet, ]
+#
+# Examined the summary of all the data fields and contents, to make the proper decisions about using the data properly, and to apply some logical "filters" to make the analysis meaningul and manageable
+summary(traindata)
+#
+# Removed variables that do not seem to have a logical association with the prediction variable (X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp; the initial five variables in traindata1 and 2)
+traindata1 <- traindata1[, -(1:5)]
+traindata2 <- traindata2[, -(1:5)]
+#
+# Removed varaibles with near zero variance
+v1 <- nearZeroVar(traindata1)
+traindata1 <- traindata1[, -v1]
+traindata2 <- traindata2[, -v1]
+#
+# Removed varaibles that have mostly not available data (more than 90% is NA)
+mostlyNAdata <- sapply(traindata1, function(x) mean(is.na(x))) > 0.90
+traindata1 <- traindata1[, mostlyNAdata==F]
+traindata2 <- traindata2[, mostlyNAdata==F]
+```
+
+## Step 2: Prediction Model Building, Training, Cross Validation
+In view of the nature of the prediction problem, I started with using **Random Forest model** as my initial model for prediction, and to evaluate its prediction accuracy. I then used traindata1 to train the model, and used **K-fold cross-validation** (3 folds) to assess the **best tuning parameters for the prediction model**. The code and results are shown below.
+
+```{r}
+# Used 3-fold Cross Validation to decide the best model tuning parameters
+fitC <- trainControl(method="cv", number=3, verboseIter=F)
+#Best/optimum tuning parameters
+fitC
+# Prediction model training (fitting) by using traindata1, and best model tuning parameters
+fitmodel <- train(classe ~ ., data=traindata1, method="rf", trControl=fitC)
+fitmodel$finalModel
+```
+
+## Step 3: Prediction Model Validation and Performance Assessment 
+
+I use the "trained" (fitted) prediction model to predict the prediction variable ("classe") in the validation data set (traindata2), and then I evaluated the generated confusion matrix. 
+
+```{r}
+# validate the model: Used the "trained" model to predict "classe"" in validation set (traindata2)
+predclasse <- predict(fitmodel, newdata=traindata2)
+
+# Got confusion matrix to assess the errors
+confusionMatrix(traindata2$classe, predclasse)
+```
+
+**I decided to go ahead with this model, build using "Random forest" machine learning method, in view of the results (The accuracy is ~99.8%, and the 95% CI - confidence Interval numbers - are also very close to that number (within a small range); and out-of-sample error is ~0.2%. Sensitivity and Specificity numbers are also very high. Overall, the results/model fit indicators are excellent, and are very much acceptable)**
+
+
+## Step 4: Testing the model: Using Test data for the final testing of the prediction model
+
+Now, I used the trained and validated prediction model fit on "test data set" to predict "classe" variable in test data set. Finally, I wrote the answers (predictions from the trained, validated, and tested model), to separate 20 prediction outputs (I received **"your answer is correct!" ** for all of the 20 submissions):
+
+```{r}
+predclasse <- predict(fitmodel, newdata=testdata)
+predclasse <- as.character(predclasse)
+pml_write_files <- function(x) {
+     n <- length(x)
+     for(i in 1:n) {
+         filename <- paste0("problem_id_", i, ".txt")
+         write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+ }
+pml_write_files(predclasse)
+```
+
+**End of Report**
+
